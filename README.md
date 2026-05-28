@@ -46,8 +46,11 @@ Defined in [`.chunk/config.json`](./.chunk/config.json). Same order for the side
 |---|---|---|
 | Install | `install-payments`, `install-transfers` | `npm ci` for each miniapp |
 | Lint | `lint-payments`, `lint-transfers` | ESLint — catches `no-unused-vars` and friends |
+| Scan | `scan-payments-trivy`, `scan-transfers-trivy`, `scan-payments-snyk`, `scan-transfers-snyk` | Trivy + Snyk — catches HIGH/CRITICAL CVEs in transitive deps before they hit CI |
 | Test | `test-payments`, `test-transfers` | Jest — catches behaviour regressions |
 | Bundle | `bundle-payments`, `bundle-transfers` | `react-native bundle` — catches Metro errors |
+
+All twelve commands are marked `remote: true` and execute on the sidecar — install through bundle, scans included. The miniapp `package.json` files carry `overrides` blocks pinning a handful of transitive deps (`@babel/plugin-transform-modules-systemjs`, `shell-quote`, `fast-xml-parser`) to versions that clear both scanners. Those overrides are the load-bearing piece that keeps the gates green.
 
 A failing gate blocks the validation run, so the agent sees feedback before its turn ends.
 
@@ -103,16 +106,23 @@ cd circleci-mobile-banking-app
 # 3. Provision your own Chunk sidecar (one-time, ~30s)
 chunk sidecar create --org-id <YOUR_ORG_ID> --name circleci-mobile-banking-app
 
-# 4. Warm the sidecar
-chunk validate                       # expect green in ~15s
+# 4. Install the scanners on the sidecar (one-time; snapshot afterwards if you want to skip this next time)
+chunk validate --remote --cmd "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin"
+chunk validate --remote --cmd "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs"
+chunk validate --remote --cmd "sudo npm install -g snyk"
+# Snyk also needs auth on the sidecar — run this from a separate terminal so your token doesn't end up in an AI session:
+#   chunk sidecar exec --command "snyk auth <YOUR_SNYK_TOKEN>"
 
-# 5. Open Claude Code in this repo (so the Stop hook activates)
+# 5. Warm the sidecar
+chunk validate                       # expect green in ~30s (longer first time as trivy downloads its vuln DB)
+
+# 6. Open Claude Code in this repo (so the Stop hook activates)
 #    See DEMO.md for the on-stage walkthrough.
 
-# 6. Apply the broken state when you're ready to demo
+# 7. Apply the broken state when you're ready to demo
 ./scripts/seed-broken.sh
 
-# 7. Reset to clean baseline between runs
+# 8. Reset to clean baseline between runs
 ./scripts/reset-clean.sh
 ```
 
@@ -131,6 +141,8 @@ Keep `main` green so any teammate can clone and run.
 
 ## Going further
 
-The active `.circleci/config.yml` is a **minimal demo pipeline** — install / lint / test / bundle only, no external secrets needed. That keeps stage-day deterministic.
+The active `.circleci/config.yml` is a **minimal demo pipeline** — install / lint / test / bundle only, no external secrets needed. That keeps stage-day deterministic. Sidecar gates (including the Trivy + Snyk scans) are richer than CI by design — that's the shift-left story: catch CVEs in the inner loop, not on the PR.
 
-For a fuller mobile pipeline reference (macOS native build, Snyk dependency scan via OIDC, Fastlane to TestFlight, manual approval, App Store submission), see [`AwesomeCICD/circleci-demo-ios:bcp-demo`](https://github.com/AwesomeCICD/circleci-demo-ios/tree/bcp-demo) — same architecture, full pipeline, all the orbs and contexts.
+> **Note:** the scan gates run on the sidecar but are **not** yet mirrored in `.circleci/config.yml`. If you want sidecar and CI in full lockstep, add the same trivy / snyk commands to the CI config. We've deliberately left CI minimal here.
+
+For a fuller mobile pipeline reference (macOS native build, Snyk dependency scan via OIDC at the PR layer, Fastlane to TestFlight, manual approval, App Store submission), see [`AwesomeCICD/circleci-demo-ios:bcp-demo`](https://github.com/AwesomeCICD/circleci-demo-ios/tree/bcp-demo) — same architecture, full pipeline, all the orbs and contexts.

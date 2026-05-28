@@ -49,7 +49,7 @@ It lives next to your editor, not at the end of a pull request.
 
 > **[Point to the list of gates if visible]**
 
-Here's mine. Eight gates — install, lint, test, build — one for each mini-app in this project. Same eight commands my CircleCI pipeline runs. The difference is *when* they run.
+Here's mine. Twelve gates — install, lint, **scan**, test, build — across both mini-apps. Trivy and Snyk run alongside the unit tests, so a transitive CVE blocks the agent the same way a failing test does. Same commands my CircleCI pipeline runs. The difference is *when* they run.
 
 ---
 
@@ -121,9 +121,9 @@ Lint passes. But the test is still asserting the old title. The sidecar caught t
 go ahead
 ```
 
-> **[Claude updates the test. Stop hook fires. ~13 seconds later, all 8 gates green.]**
+> **[Claude updates the test. Stop hook fires. ~30 seconds later, all 12 gates green — install, lint, scan, test, bundle.]**
 
-Two fixes. Under a minute. The agent never touched CI.
+Two fixes. Under a minute. The agent never touched CI. And the scan gates went green alongside the tests — vulnerability checking happens in the same loop, not as a separate PR check that runs hours later.
 
 ---
 
@@ -160,7 +160,10 @@ One command — `chunk init` — wires it up. It generates `.claude/settings.jso
 They run the same commands. `.chunk/config.json` and `.circleci/config.yml` are the same gates. We treat them as one contract.
 
 **"Doesn't this slow every Claude turn down?"**
-By about 10–15 seconds on turns that change code, on a warm sidecar. That's CI's job, done in seconds instead of minutes — once per turn, not once per PR.
+By about 20–30 seconds on turns that change code, on a warm sidecar (scans add a few seconds; the vuln DBs are pre-cached on the sidecar snapshot). That's CI's job — including security scanning — done in seconds instead of minutes, once per turn rather than once per PR.
+
+**"Why two scanners?"**
+Trivy and Snyk catch overlapping but not identical CVEs — Trivy reads the package-lock and matches against the Aqua advisory DB; Snyk does graph-aware analysis with its own DB. Running both is cheap on a warm sidecar (~5–10s combined) and the union of findings is broader than either alone.
 
 ---
 

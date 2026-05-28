@@ -2,16 +2,19 @@
   "commands": [
     {
       "name": "install-payments",
-      "run": "cd miniapps/payments && npm ci"
+      "run": "cd miniapps/payments && npm ci",
+      "remote": true
     },
     {
       "name": "install-transfers",
-      "run": "cd miniapps/transfers && npm ci"
+      "run": "cd miniapps/transfers && npm ci",
+      "remote": true
     },
     {
       "name": "lint-payments",
       "run": "cd miniapps/payments && npm run lint",
       "role": "gate",
+      "remote": true,
       "timeout": 60,
       "limit": 3
     },
@@ -19,13 +22,47 @@
       "name": "lint-transfers",
       "run": "cd miniapps/transfers && npm run lint",
       "role": "gate",
+      "remote": true,
       "timeout": 60,
+      "limit": 3
+    },
+    {
+      "name": "scan-payments-trivy",
+      "run": "cd miniapps/payments && trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .",
+      "role": "gate",
+      "remote": true,
+      "timeout": 180,
+      "limit": 3
+    },
+    {
+      "name": "scan-transfers-trivy",
+      "run": "cd miniapps/transfers && trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .",
+      "role": "gate",
+      "remote": true,
+      "timeout": 180,
+      "limit": 3
+    },
+    {
+      "name": "scan-payments-snyk",
+      "run": "cd miniapps/payments && snyk test --severity-threshold=high",
+      "role": "gate",
+      "remote": true,
+      "timeout": 180,
+      "limit": 3
+    },
+    {
+      "name": "scan-transfers-snyk",
+      "run": "cd miniapps/transfers && snyk test --severity-threshold=high",
+      "role": "gate",
+      "remote": true,
+      "timeout": 180,
       "limit": 3
     },
     {
       "name": "test-payments",
       "run": "cd miniapps/payments && npm test -- --watchAll=false",
       "role": "gate",
+      "remote": true,
       "timeout": 120,
       "limit": 3
     },
@@ -33,6 +70,7 @@
       "name": "test-transfers",
       "run": "cd miniapps/transfers && npm test -- --watchAll=false",
       "role": "gate",
+      "remote": true,
       "timeout": 120,
       "limit": 3
     },
@@ -40,6 +78,7 @@
       "name": "bundle-payments",
       "run": "cd miniapps/payments && mkdir -p dist/ios/assets && npm run bundle:ios",
       "role": "gate",
+      "remote": true,
       "timeout": 300,
       "limit": 3
     },
@@ -47,6 +86,7 @@
       "name": "bundle-transfers",
       "run": "cd miniapps/transfers && mkdir -p dist/ios/assets && npm run bundle:ios",
       "role": "gate",
+      "remote": true,
       "timeout": 300,
       "limit": 3
     }
@@ -56,7 +96,7 @@
     "repo": "circleci-mobile-banking-app"
   },
   "validation": {
-    "sidecarImage": "b92405ec-8be4-4211-ac7f-5d97fdbdf3b1"
+    "sidecarImage": "8318d301-5fbd-46eb-aaf5-5f11d162d18e"
   },
   "environment": {
     "stack": "ruby",
