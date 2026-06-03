@@ -27,12 +27,15 @@ claude                                              # launch Claude Code from in
 ## INTRO (0:00 → 0:30)
 
 > **[Face the audience. No commands yet.]**
+>
+> Intro to yourself
+> Intro to SOSDR
 
 AI coding agents are fast. Really fast. Claude Code, Cursor — they ship code at a pace no developer could match manually.
 
 But fast doesn't mean correct.
 
-A lot of the time the problem isn't that agents write bad code. The problem is that by the time CI tells you something is broken — the agent has moved on. The context is gone. You're debugging a change from the agent you've already forgotten.
+A lot of the time the problem isn't that agents write bad code, even though we all know sometimes they do. A massive problem is that by the time CI tells you something is broken — the agent has moved on. The context is gone. You're debugging a change from the agent you've already forgotten.
 
 What if validation happened *before* the commit? Before the push. Before CI even sees it.
 
@@ -48,7 +51,7 @@ Quick bit of framing. Every change lives in two loops.
 
 The **inner loop** — on the left — is where you actually work: plan, code, validate, debug, on your machine, in seconds. The **outer loop** — on the right — is what happens after you push: build, test, deploy, release, in CI, in minutes.
 
-For years those were balanced. Then AI showed up and made the inner loop incredibly fast — but not any more *correct*. So incomplete changes sail through the inner loop and pile up in the outer loop, where every failure costs a full CI cycle and a context switch.
+For years those were balanced. Then AI showed up and made the inner loop incredibly fast — but because we rely on CI to validate so much, things arent always correct. So incomplete changes sail through the inner loop and pile up in the outer loop, where every failure costs a full CI cycle and a context switch.
 
 > **[Point to the "Validate" node on the inner-loop side.]**
 
@@ -63,8 +66,6 @@ That's the gap sidecars close.
 > **[Optional: switch to terminal, run `chunk sidecar current` and `chunk validate --list`]**
 
 A sidecar is a remote sandbox — running on CircleCI — that mirrors your CI environment exactly. Same install commands. Same lint rules. Same test suite.
-
-It lives next to your editor, not at the end of a pull request.
 
 > **[Point to the list of gates if visible]**
 
@@ -96,9 +97,11 @@ cd miniapps/payments && snyk test --severity-threshold=high
 
 Character for character, the same command. Same for Trivy — `trivy fs --severity HIGH,CRITICAL --exit-code 1` in both. Same install, same lint, same test, same bundle.
 
-This isn't *similar* to CI. It **is** CI's command set, pulled forward to the inner loop. One contract, two places it runs. When the sidecar is green, there's no daylight left for CI to find.
+This isn't *similar* to CI. It **is** CI's command set, pulled forward to the inner loop.
 
 ---
+
+Run validate locally
 
 ## WHAT IS A STOP HOOK? (2:45 → 3:15)
 
