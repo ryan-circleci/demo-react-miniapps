@@ -32,7 +32,7 @@ AI coding agents are fast. Really fast. Claude Code, Cursor — they ship code a
 
 But fast doesn't mean correct.
 
-The problem isn't that agents write bad code. The problem is that by the time CI tells you something is broken — the agent has moved on. The context is gone. You're debugging a commit you've already forgotten.
+A lot of the time the problem isn't that agents write bad code. The problem is that by the time CI tells you something is broken — the agent has moved on. The context is gone. You're debugging a change from the agent you've already forgotten.
 
 What if validation happened *before* the commit? Before the push. Before CI even sees it.
 
