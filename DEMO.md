@@ -131,7 +131,7 @@ Validation in the inner loop. Not as an afterthought. As part of the agent's lif
 
 > **[Screen: editor on left showing `miniapps/payments/src/App.js`, Claude Code terminal on right]**
 
-Here's the scenario. I asked Claude to make the Payments screen feel more welcoming. It added a welcome line, updated the title, started importing `TouchableOpacity` for some interactivity it never finished.
+Here's the scenario. I asked Claude to make the Payments screen feel more welcoming. It added a welcome line and started importing `TouchableOpacity` for some interactivity it never finished.
 
 To a human skimming the diff — this looks shippable. Let's see what the sidecar thinks.
 
@@ -156,24 +156,9 @@ Seven seconds. Dead import. Same lint rule CI would have caught — just minutes
 go ahead
 ```
 
-> **[Claude removes the unused import. Stop hook fires again. ~9 seconds later:]**
+> **[Claude removes the unused import. Stop hook fires again and runs the full gate set — install, lint, scan, test, bundle across both mini-apps — and comes back all 12 green.]**
 
-```
-✗ test-payments
-  Unable to find an element with text: Payments
-```
-
-Lint passes. But the test is still asserting the old title. The sidecar caught the second issue on the next turn — no prompt needed.
-
-> **[Type:]**
-
-```
-go ahead
-```
-
-> **[Claude updates the test. Stop hook fires. ~30 seconds later, all 12 gates green — install, lint, scan, test, bundle.]**
-
-Two fixes. Under a minute. The agent never touched CI. And the scan gates went green alongside the tests — vulnerability checking happens in the same loop, not as a separate PR check that runs hours later.
+One fix. The agent never touched CI. And the scan gates went green alongside lint and tests — vulnerability checking happens in the same loop, not as a separate PR check that runs hours later.
 
 ---
 
@@ -223,7 +208,7 @@ Trivy and Snyk catch overlapping but not identical CVEs — Trivy reads the pack
 |---|---|
 | `chunk validate` hangs past 30s | Run `chunk sidecar current` in another pane. If healthy, retry. Otherwise fall back: `cd miniapps/payments && npm run lint && npm test` |
 | Stop hook didn't fire | You launched Claude Code from outside the repo. Quit, `cd` into the repo, run `claude` again |
-| Claude caught the bug in its first reply | Pivot: *"Even better — but what about the test?"* Send message 2 to continue |
+| Claude fixed the import before validating | Re-seed (`./scripts/seed-broken.sh`) and restart — the agent should *report* the sidecar's finding, not pre-fix it |
 | CI takes longer than 2 minutes | Have a screenshot of a previous green run ready. *"In a previous run, you can see…"* |
 
 ---

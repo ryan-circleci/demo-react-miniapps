@@ -3,14 +3,14 @@
 # seed-broken.sh — apply the deterministic "broken" state for the demo.
 #
 # The fiction: an AI agent was asked to "make the Payments screen feel more
-# welcoming". It changed the title and started a refactor by importing
-# TouchableOpacity to make the welcome line tappable, but never finished.
+# welcoming". It added a welcome line and started a refactor by importing
+# TouchableOpacity to make it tappable, but never finished.
 #
 # Result:
 #   - ESLint fails: 'TouchableOpacity' is defined but never used
-#   - Jest fails:   getByText('Payments') no longer matches "Welcome to Payments"
 #
-# Both gates fail in chunk validate. The agent then fixes both in the loop.
+# One gate fails in chunk validate. The agent removes the unused import and
+# the run goes green. (Single-failure demo — the test is left passing.)
 
 set -euo pipefail
 
@@ -45,7 +45,7 @@ import App from '../src/App';
 
 test('renders Payments title', () => {
   const { getByText } = render(<App />);
-  expect(getByText('Payments')).toBeTruthy();
+  expect(getByText('Welcome to Payments')).toBeTruthy();
 });
 EOF
 
@@ -53,4 +53,4 @@ echo "Seeded broken state in:"
 echo "  $APP"
 echo "  $TEST"
 echo ""
-echo "Run 'chunk validate' (or just let the Stop hook fire) to see both gates fail."
+echo "Run 'chunk validate' (or just let the Stop hook fire) to see lint fail."
