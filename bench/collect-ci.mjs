@@ -13,7 +13,8 @@ const BENCH_DIR = dirname(fileURLToPath(import.meta.url));
 const RESULTS = join(BENCH_DIR, "results");
 const PUSHGW = process.env.PUSHGW || "http://localhost:9091";
 const TOKEN = process.env.CIRCLE_TOKEN || process.env.CIRCLECI_TOKEN;
-const SLUG = "gh/AwesomeCICD/circleci-mobile-banking-app";
+const SLUG =
+  process.env.CIRCLECI_PROJECT_SLUG || "gh/ryan-circleci/demo-react-miniapps";
 const API = "https://circleci.com/api/v2";
 
 if (!TOKEN) {

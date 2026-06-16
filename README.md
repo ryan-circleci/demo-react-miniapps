@@ -1,8 +1,8 @@
-# circleci-mobile-banking-app
+# demo-react-miniapps
 
-[![CircleCI](https://circleci.com/gh/AwesomeCICD/circleci-mobile-banking-app/tree/main.svg?style=svg)](https://circleci.com/gh/AwesomeCICD/circleci-mobile-banking-app/tree/main)
+[![CircleCI](https://circleci.com/gh/ryan-circleci/demo-react-miniapps/tree/main.svg?style=svg)](https://circleci.com/gh/ryan-circleci/demo-react-miniapps/tree/main)
 
-A CircleCI demo of a brownfield mobile banking app — React Native mini-apps bundling on Linux, handing off to a native iOS shell on macOS.
+A CircleCI demo repo — React Native mini-apps bundling on Linux, handing off to a native iOS shell on macOS.
 
 Built to showcase **Chunk Sidecars**: moving CI validation into the inner loop so feedback lands in seconds, before any commit hits CI.
 
@@ -96,15 +96,15 @@ After that, every Claude Code turn ends with a validation cycle.
 
 ```bash
 # 1. Clone
-git clone git@github.com:AwesomeCICD/circleci-mobile-banking-app.git
-cd circleci-mobile-banking-app
+git clone git@github.com:ryan-circleci/demo-react-miniapps.git
+cd demo-react-miniapps
 
 # 2. Install miniapp dependencies
 (cd miniapps/payments && npm ci)
 (cd miniapps/transfers && npm ci)
 
 # 3. Provision your own Chunk sidecar (one-time, ~30s)
-chunk sidecar create --org-id <YOUR_ORG_ID> --name circleci-mobile-banking-app
+chunk sidecar create --org-id <YOUR_ORG_ID> --name demo-react-miniapps
 
 # 4. Install the scanners on the sidecar (one-time; snapshot afterwards if you want to skip this next time)
 chunk validate --remote --cmd "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin"
@@ -143,6 +143,6 @@ Keep `main` green so any teammate can clone and run.
 
 The active `.circleci/config.yml` mirrors the sidecar gates **1:1** — install / lint / scan / test / bundle, for both mini-apps, in the same order. That's the whole point: when the sidecar says green, CI agrees, and vice versa. The shift-left story is purely about *when* the gates run (inner loop vs. PR), not *which* gates run.
 
-> **Note:** the CI scan steps need `SNYK_TOKEN`, supplied via the AwesomeCICD `snyk` context. Snyk reads the token from the environment, so no `snyk auth` step is needed in CI. Trivy needs no secret. The Trivy vuln DB is cached between runs to keep stage-day fast.
+> **Note:** Trivy needs no secret. To enable Snyk, set `SNYK_TOKEN` in CircleCI project environment variables and uncomment the Snyk steps in `.circleci/config.yml`. The Trivy vuln DB is cached between runs to keep feedback fast.
 
 For a fuller mobile pipeline reference (macOS native build, Snyk dependency scan via OIDC at the PR layer, Fastlane to TestFlight, manual approval, App Store submission), see [`AwesomeCICD/circleci-demo-ios:bcp-demo`](https://github.com/AwesomeCICD/circleci-demo-ios/tree/bcp-demo) — same architecture, full pipeline, all the orbs and contexts.

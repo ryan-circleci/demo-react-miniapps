@@ -92,8 +92,8 @@
     }
   ],
   "vcs": {
-    "org": "AwesomeCICD",
-    "repo": "circleci-mobile-banking-app"
+    "org": "ryan-circleci",
+    "repo": "demo-react-miniapps"
   },
   "validation": {
     "sidecarImage": "8318d301-5fbd-46eb-aaf5-5f11d162d18e"

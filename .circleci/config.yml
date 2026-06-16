@@ -1,14 +1,10 @@
 version: 2.1
 
-# Demo pipeline — mirrors the Chunk Sidecar gates 1:1 so that "sidecar green"
-# reliably means "CI green". Gate order matches .chunk/config.json:
-# install → lint → scan (Trivy + Snyk) → test → bundle, for each mini-app.
+# demo-react-miniapps — validation pipeline for React Native mini-apps.
+# Gate order mirrors .chunk/config.json: install → lint → Trivy → test → bundle.
 #
-# The scan steps need SNYK_TOKEN, provided via the AwesomeCICD `derry-snyk` context.
-# Snyk reads SNYK_TOKEN from the environment, so no `snyk auth` step is required.
-#
-# A fuller iOS pipeline (OIDC, Fastlane, TestFlight, App Store) lives on
-# AwesomeCICD/circleci-demo-ios:bcp-demo for reference.
+# Set SNYK_TOKEN in Project Settings → Environment Variables to enable Snyk
+# (optional; uncomment the Snyk steps below). Trivy needs no secret.
 
 jobs:
   validate-miniapp:
@@ -36,10 +32,8 @@ jobs:
           name: Lint
           command: cd << parameters.miniapp_path >> && npm run lint
       - run:
-          name: Install scanners (Trivy + Snyk)
-          command: |
-            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-            sudo npm install -g snyk
+          name: Install Trivy
+          command: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
       - restore_cache:
           keys:
             - v1-trivy-db-
@@ -50,26 +44,28 @@ jobs:
           key: v1-trivy-db-{{ epoch }}
           paths:
             - ~/.cache/trivy
-      - run:
-          name: "Scan: Snyk (severity high+)"
-          command: cd << parameters.miniapp_path >> && snyk test --severity-threshold=high
+      # Optional — requires SNYK_TOKEN in project env vars:
+      # - run:
+      #     name: Install Snyk CLI
+      #     command: sudo npm install -g snyk
+      # - run:
+      #     name: "Scan: Snyk (severity high+)"
+      #     command: cd << parameters.miniapp_path >> && snyk test --severity-threshold=high
       - run:
           name: Test
           command: cd << parameters.miniapp_path >> && npm test -- --watchAll=false
       - run:
-          name: Bundle iOS
+          name: Bundle iOS (JS)
           command: cd << parameters.miniapp_path >> && mkdir -p dist/ios/assets && npm run bundle:ios
 
 workflows:
-  mobile-banking-pipeline:
+  demo-react-miniapps:
     jobs:
       - validate-miniapp:
-          name: "Payments"
-          context: derry-snyk
+          name: miniapp-payments
           miniapp_name: payments
           miniapp_path: miniapps/payments
       - validate-miniapp:
-          name: "Transfers"
-          context: derry-snyk
+          name: miniapp-transfers
           miniapp_name: transfers
           miniapp_path: miniapps/transfers

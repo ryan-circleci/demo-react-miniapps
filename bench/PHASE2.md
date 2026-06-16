@@ -232,12 +232,13 @@ BENCH_PHASE=2 bash bench/run-bench.sh 5
 
 ---
 
-## Open questions (decide before full run)
+## CI prerequisites
 
-1. **Wrong test assertion seed** — enable in `make-base-phase2.sh` from the start, or add only if dry-run outer `iterations` < 2?
-2. **Model lock** — pin model in run script / env for reproducibility across Phase 1 and 2?
-3. **n=5 vs n=10** — is 5 enough if iteration count is bimodal?
-4. **Commit `env/shared.env`** — OTEL exporter config still missing from repo; add before publish?
+CircleCI must be set up on the repo that receives agent pushes (default: `origin`).
+
+- **Project:** [ryan-circleci/demo-react-miniapps](https://app.circleci.com/pipelines/github/ryan-circleci/demo-react-miniapps)
+- **Harness slug:** `gh/ryan-circleci/demo-react-miniapps` (override with `CIRCLECI_PROJECT_SLUG`)
+- **Snyk:** dropped from the default pipeline; bench uses the same Trivy-only gate set via `make-base.sh`
 
 ---
 
