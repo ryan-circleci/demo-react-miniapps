@@ -47,7 +47,6 @@ jobs:
       # Optional — requires SNYK_TOKEN in project env vars:
       # - run:
       #     name: Install Snyk CLI
-      #     command: sudo npm install -g snyk
       # - run:
       #     name: "Scan: Snyk (severity high+)"
       #     command: cd << parameters.miniapp_path >> && snyk test --severity-threshold=high
