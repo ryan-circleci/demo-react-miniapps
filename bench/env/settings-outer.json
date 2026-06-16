@@ -8,9 +8,7 @@
       "Bash(git push:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git fetch:*)",
-      "Bash(git pull:*)"
+      "Bash(git log:*)"
     ],
     "deny": [
       "Bash(npm:*)",

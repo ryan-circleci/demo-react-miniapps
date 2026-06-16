@@ -43,6 +43,7 @@ echo "=== building bench base (phase ${BENCH_PHASE}; reduced gate set: Snyk drop
 bash "$BENCH_DIR/scenario/make-base.sh"
 if [[ "$BENCH_PHASE" == "2" ]]; then
   bash "$BENCH_DIR/scenario/make-base-phase2.sh"
+  bash "$BENCH_DIR/scenario/verify-phase2-seed.sh"
   export BENCH_BASE_REF=bench/base-phase2
 else
   export BENCH_BASE_REF=bench/base

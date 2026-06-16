@@ -27,6 +27,11 @@ PUSHGW="${PUSHGW:-http://localhost:9091}"
 mkdir -p "$RESULTS"
 cd "$REPO_ROOT"
 
+if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+  echo "ERROR: git rebase in progress — run: git rebase --abort" >&2
+  exit 1
+fi
+
 BENCH_PHASE="${BENCH_PHASE:-1}"
 case "$BENCH_PHASE" in
   1) TASK_FILE="TASK.md"; PREAMBLE_SUFFIX="" ;;
@@ -56,10 +61,19 @@ if [[ -z "${BENCH_BASE_REF:-}" ]]; then
 fi
 BASE_REF="$BENCH_BASE_REF"
 git rev-parse --verify -q "$BASE_REF" >/dev/null || { echo "ERROR: $BASE_REF missing — run bench/scenario/make-base.sh"; exit 1; }
-echo "==> [$LABEL] fresh branch $BRANCH from $BASE_REF"
+if [[ "$BENCH_PHASE" == "2" ]]; then
+  git show "$BASE_REF:miniapps/payments/src/App.js" | rg -q 'pendingTransfers' || {
+    echo "ERROR: $BASE_REF missing strong phase2 seed — run: bash bench/scenario/make-base-phase2.sh && bash bench/scenario/verify-phase2-seed.sh" >&2
+    exit 1
+  }
+fi
+echo "==> [$LABEL] fresh branch $BRANCH from $BASE_REF ($(git rev-parse --short "$BASE_REF"))"
 git checkout -q -B "$BRANCH" "$BASE_REF"
 git reset -q --hard "$BASE_REF"          # byte-identical start; discards any leftover swap
 BASE_SHA="$(git rev-parse HEAD)"
+if [[ "$ARM" == "outer" ]]; then
+  git push origin --delete "$BRANCH" 2>/dev/null || true
+fi
 
 # arm-specific Claude settings (working-tree change; fine if the agent commits it
 # on this throwaway branch — CircleCI does not read .claude/).
@@ -118,6 +132,11 @@ else
 $(echo "$CIW" | jq -r '.feedback // "no logs"' 2>/dev/null)
 
 Fix the problem, commit, and push again, then stop. Do not poll CI yourself — you will be told the new result."
+    if [[ "$BENCH_PHASE" == "2" ]]; then
+      FEEDBACK="${FEEDBACK}
+
+Phase 2 rules: complete Milestone 1 (Payments only) before editing miniapps/transfers/. Ignore Transfers failures until Payments is CI-clean. Do not git pull, git fetch, or rebase — push only."
+    fi
   done
   END=$(date +%s); WALL=$((END - START))
   [ "$CI_STATUS" = "success" ] && IS_ERROR=false || IS_ERROR=true
