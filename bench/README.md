@@ -77,3 +77,18 @@ See the bottom of `report.md` / `DEMO.md`: n=5, a single first-try-pass task
 one contaminated inner trial excluded by using medians, and the reduced gate set.
 This reproduces CircleCI's "Sidecar Race" experiment and adds the OTEL/Grafana
 instrumentation layer.
+
+## Phase 2: Iteration economics
+
+Phase 1 measured the **floor** (first-try green). Phase 2 forces multiple fix
+cycles via a seeded WIP on `bench/base-phase2`. See **[PHASE2.md](./PHASE2.md)**.
+
+```bash
+# Dry run (one trial per arm)
+bash bench/scenario/make-base.sh && bash bench/scenario/make-base-phase2.sh
+BENCH_PHASE=2 bash bench/run-trial.sh outer 0
+
+# Full batch
+BENCH_PHASE=2 bash bench/run-bench.sh 5
+# Report: bench/report-phase2.md
+```

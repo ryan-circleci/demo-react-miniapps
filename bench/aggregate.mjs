@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
 
 const BENCH_DIR = dirname(fileURLToPath(import.meta.url));
 const RESULTS = join(BENCH_DIR, "results");
+const BENCH_PHASE = Number(process.env.BENCH_PHASE || "1");
+const REPORT = BENCH_PHASE === 2 ? "report-phase2.md" : "report.md";
 
 const readJSON = (p) => (existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : null);
 const median = (xs) => {
@@ -35,17 +37,23 @@ for (const f of readdirSync(RESULTS).filter((f) => f.endsWith(".metrics.json")))
     (u.input_tokens || 0) + (u.output_tokens || 0) +
     (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
   trials.push({
-    arm: m.arm, trial: m.trial,
+    arm: m.arm, trial: m.trial, phase: m.phase ?? BENCH_PHASE,
     wall: m.wall_seconds,
     cost: r.total_cost_usd ?? 0,
     turns: r.num_turns ?? 0,
     tokens,
     out_tokens: u.output_tokens || 0,
+    iterations: m.iterations ?? NaN,
+    commits: m.commits ?? NaN,
     ci_min: (ci.ci_seconds ?? NaN) / 60,
     pipelines: ci.ci_pipelines ?? NaN,
     is_error: m.is_error === true || r.is_error === true,
   });
 }
+
+// Phase filter: when running phase 2 aggregate, ignore phase-1 trials if tagged
+const phaseTrials = trials.filter((t) => (t.phase ?? 1) === BENCH_PHASE);
+const useTrials = phaseTrials.length ? phaseTrials : trials;
 
 const arms = ["inner", "outer"];
 const metrics = [
@@ -54,18 +62,24 @@ const metrics = [
   ["Agent turns", "turns", 0],
   ["Total tokens", "tokens", 0],
   ["Output tokens", "out_tokens", 0],
+  ["Outer harness iterations", "iterations", 0],
+  ["Commits after base", "commits", 0],
   ["CI compute (min)", "ci_min", 1],
   ["CI pipelines", "pipelines", 0],
 ];
 
-const byArm = Object.fromEntries(arms.map((a) => [a, trials.filter((t) => t.arm === a)]));
+const byArm = Object.fromEntries(arms.map((a) => [a, useTrials.filter((t) => t.arm === a)]));
 
-let md = `# Sidecar Benchmark — Inner vs Outer Loop\n\n`;
+let md = `# Sidecar Benchmark — Inner vs Outer Loop`;
+if (BENCH_PHASE === 2) md += ` (Phase 2: Iteration Economics)`;
+md += `\n\n`;
 md += `Inner loop = chunk-sidecar validation in the agent's lifecycle. `;
 md += `Outer loop = traditional CI (push, read CircleCI, fix, repeat). `;
 md += `Same task, same model; the only difference is how each arm validates.\n\n`;
-md += `- inner trials: **${byArm.inner.length}**  ·  outer trials: **${byArm.outer.length}**\n`;
-const errs = trials.filter((t) => t.is_error);
+md += `- inner trials: **${byArm.inner.length}**  ·  outer trials: **${byArm.outer.length}**`;
+if (BENCH_PHASE === 2) md += `  ·  phase **2** (seeded WIP, multi-iteration target)`;
+md += `\n`;
+const errs = useTrials.filter((t) => t.is_error);
 if (errs.length) md += `- ⚠️ ${errs.length} trial(s) ended with is_error=true: ${errs.map((t) => `${t.arm}-${t.trial}`).join(", ")}\n`;
 // ---- shareable headline (the table you can paste into a deck/email) ----
 const medOf = (a, key) => median(byArm[a].map((t) => t[key]));
@@ -87,7 +101,20 @@ md += `| **Total tokens** | ${kfmt(medOf("inner", "tokens"))} | ${kfmt(medOf("ou
 md += `| Agent turns | ${fmt(medOf("inner", "turns"), 0)} | ${fmt(medOf("outer", "turns"), 0)} | ${qual("turns", "more")} |\n`;
 md += `| **CI compute** | ${fmt(medOf("inner", "ci_min"), 1)} min | ${fmt(medOf("outer", "ci_min"), 1)} min | ${qual("ci_min", "more")} |\n`;
 md += `| **CI pipelines** | ${fmt(medOf("inner", "pipelines"), 0)} | ${fmt(medOf("outer", "pipelines"), 0)} | ${qual("pipelines", "more")} |\n`;
-md += `\n**What it means:** On a change that passes CI first-try, the sidecar / inner loop is faster and cheaper *per change* — the time win is the CI wait the outer loop pays even on success, and the token/cost win comes from fewer agent turns. CI minutes are ≈equal because both arms run exactly one pipeline; the CI-compute savings only show up when the outer loop has to **iterate**, which this simple task does not trigger.\n`;
+if (BENCH_PHASE === 2) {
+  const outerIters = median(byArm.outer.map((t) => t.iterations).filter(Number.isFinite));
+  const outerCostPerIter = median(
+    byArm.outer.filter((t) => t.iterations > 0).map((t) => t.cost / t.iterations),
+  );
+  md += `| Outer harness iterations (median) | — | ${fmt(outerIters, 0)} | — |\n`;
+  md += `| Outer cost / CI iteration ($) | — | ${fmt(outerCostPerIter, 3)} | — |\n`;
+}
+if (BENCH_PHASE === 1) {
+  md += `\n**What it means:** On a change that passes CI first-try, the sidecar / inner loop is faster and cheaper *per change* — the time win is the CI wait the outer loop pays even on success, and the token/cost win comes from fewer agent turns. CI minutes are ≈equal because both arms run exactly one pipeline; the CI-compute savings only show up when the outer loop has to **iterate**, which this simple task does not trigger.\n`;
+} else {
+  md += `\n**What it means:** Phase 2 seeds deliberate gate failures so the outer arm must push-and-wait multiple times. Compare **CI pipelines** and **cost per outer iteration** against Phase 1 (\`report.md\`) to quantify iteration economics. Inner arm should fix in sidecar before a single push.\n`;
+  md += `\n_Plan: [PHASE2.md](./PHASE2.md)_\n`;
+}
 
 md += `\n## Medians (inner vs outer)\n\n`;
 md += `| Metric | inner | outer | Δ (outer−inner) | outer / inner |\n|---|--:|--:|--:|--:|\n`;
@@ -112,12 +139,12 @@ for (const [name, key, d] of metrics) {
 }
 
 md += `## Per-trial detail\n\n`;
-md += `| arm | trial | wall(s) | cost($) | turns | tokens | CI(min) | pipelines | error |\n`;
-md += `|---|--:|--:|--:|--:|--:|--:|--:|:-:|\n`;
-for (const t of trials.sort((a, b) => (a.arm + a.trial).localeCompare(b.arm + b.trial))) {
-  md += `| ${t.arm} | ${t.trial} | ${fmt(t.wall, 0)} | ${fmt(t.cost, 4)} | ${t.turns} | ${fmt(t.tokens, 0)} | ${fmt(t.ci_min, 1)} | ${fmt(t.pipelines, 0)} | ${t.is_error ? "✗" : "✓"} |\n`;
+md += `| arm | trial | wall(s) | cost($) | turns | iters | tokens | CI(min) | pipelines | error |\n`;
+md += `|---|--:|--:|--:|--:|--:|--:|--:|--:|:-:|\n`;
+for (const t of useTrials.sort((a, b) => (a.arm + a.trial).localeCompare(b.arm + b.trial))) {
+  md += `| ${t.arm} | ${t.trial} | ${fmt(t.wall, 0)} | ${fmt(t.cost, 4)} | ${t.turns} | ${fmt(t.iterations, 0)} | ${fmt(t.tokens, 0)} | ${fmt(t.ci_min, 1)} | ${fmt(t.pipelines, 0)} | ${t.is_error ? "✗" : "✓"} |\n`;
 }
 md += `\n_Live dashboard: http://localhost:3000/d/inner-vs-outer_\n`;
 
-writeFileSync(join(BENCH_DIR, "report.md"), md);
-console.log(`aggregate: wrote bench/report.md (${trials.length} trials: ${byArm.inner.length} inner, ${byArm.outer.length} outer)`);
+writeFileSync(join(BENCH_DIR, REPORT), md);
+console.log(`aggregate: wrote bench/${REPORT} (${useTrials.length} trials: ${byArm.inner.length} inner, ${byArm.outer.length} outer)`);

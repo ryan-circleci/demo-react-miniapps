@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# run-bench.sh [N]
-#   N = trials per arm (default 5)
+# run-bench.sh [N] [phase]
+#   N     = trials per arm (default 5)
+#   phase = 1 (default) | 2  — or set BENCH_PHASE=2
 #
 # Orchestrates the full inner-vs-outer benchmark: N trials per arm, interleaved
 # (inner-1, outer-1, inner-2, outer-2, ...) to spread out time-of-day API
@@ -15,6 +16,8 @@
 set -euo pipefail
 
 N="${1:-5}"
+BENCH_PHASE="${BENCH_PHASE:-${2:-1}}"
+export BENCH_PHASE
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$BENCH_DIR/.." && pwd)"
 cd "$REPO_ROOT"
@@ -36,9 +39,14 @@ DIRTY="$(git status --porcelain --untracked-files=no)"
 START_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 git config push.autoSetupRemote true   # so the agent's bare `git push` works on a new branch
 
-echo "=== building bench/base (reduced gate set: Snyk dropped, Trivy kept) ==="
+echo "=== building bench base (phase ${BENCH_PHASE}; reduced gate set: Snyk dropped) ==="
 bash "$BENCH_DIR/scenario/make-base.sh"
-export BENCH_BASE_REF=bench/base
+if [[ "$BENCH_PHASE" == "2" ]]; then
+  bash "$BENCH_DIR/scenario/make-base-phase2.sh"
+  export BENCH_BASE_REF=bench/base-phase2
+else
+  export BENCH_BASE_REF=bench/base
+fi
 
 cleanup() {
   cp "$BENCH_DIR/env/settings-inner.json" "$REPO_ROOT/.claude/settings.json" 2>/dev/null || true
@@ -57,7 +65,9 @@ done
 echo "=== collecting CircleCI minutes ==="
 node "$BENCH_DIR/collect-ci.mjs" || echo "WARN: CI collection failed; re-run: node bench/collect-ci.mjs"
 
-echo "=== aggregating -> bench/report.md ==="
-node "$BENCH_DIR/aggregate.mjs"
+REPORT="report.md"
+[[ "$BENCH_PHASE" == "2" ]] && REPORT="report-phase2.md"
+echo "=== aggregating -> bench/${REPORT} ==="
+BENCH_PHASE="$BENCH_PHASE" node "$BENCH_DIR/aggregate.mjs"
 
-echo "=== DONE. Grafana: http://localhost:3000  |  Report: bench/report.md ==="
+echo "=== DONE (phase ${BENCH_PHASE}). Grafana: http://localhost:3000  |  Report: bench/${REPORT} ==="
