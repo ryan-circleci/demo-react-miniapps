@@ -46,7 +46,7 @@ Defined in [`.chunk/config.json`](./.chunk/config.json). Same order for the side
 |---|---|---|
 | Install | `install-payments`, `install-transfers` | `npm ci` for each miniapp |
 | Lint | `lint-payments`, `lint-transfers` | ESLint — catches `no-unused-vars` and friends |
-| Scan | `scan-payments-trivy`, `scan-transfers-trivy`, `scan-payments-snyk`, `scan-transfers-snyk` | Trivy + Snyk — catches HIGH/CRITICAL CVEs in transitive deps before they hit CI |
+| Scan | `scan-payments-trivy`, `scan-transfers-trivy` | Trivy — catches HIGH/CRITICAL CVEs in transitive deps before they hit CI |
 | Test | `test-payments`, `test-transfers` | Jest — catches behaviour regressions |
 | Bundle | `bundle-payments`, `bundle-transfers` | `react-native bundle` — catches Metro errors |
 
