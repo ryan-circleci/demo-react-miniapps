@@ -31,6 +31,12 @@ gh_repo() {
     echo "$BENCH_GH_REPO"
     return
   fi
+  local url owner repo
+  url="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
+  if [[ "$url" =~ github\.com[:/]+([^/]+)/([^/.]+)(\.git)?$ ]]; then
+    echo "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+    return
+  fi
   gh repo view --json nameWithOwner -q .nameWithOwner --remote origin 2>/dev/null \
     || gh repo view --json nameWithOwner -q .nameWithOwner
 }
@@ -120,11 +126,28 @@ case "$ACTION" in
       URL="$(gh pr view "$NUM" --repo "$REPO" --json url -q .url)"
       echo "==> [$LABEL] draft PR already exists: $URL"
     else
-      URL="$(gh pr create --repo "$REPO" --base "$PR_BASE" --head "$BRANCH" --draft \
-        --title "$(pr_title)" --body "$(pr_body_initial)" 2>/dev/null)" \
-        || { echo "WARN: draft PR create failed for $BRANCH"; exit 0; }
+      URL=""
+      err=""
+      for attempt in 1 2 3 4 5; do
+        if out="$(gh pr create --repo "$REPO" --base "$PR_BASE" --head "$BRANCH" --draft \
+          --title "$(pr_title)" --body "$(pr_body_initial)" 2>&1)"; then
+          URL="$out"
+          break
+        fi
+        err="$out"
+        NUM="$(existing_pr_number "$REPO")"
+        if [[ -n "$NUM" ]]; then
+          URL="$(gh pr view "$NUM" --repo "$REPO" --json url -q .url)"
+          break
+        fi
+        sleep 3
+      done
+      if [[ -z "$URL" ]]; then
+        echo "WARN: draft PR create failed for $BRANCH (${err:-no detail})" >&2
+        exit 0
+      fi
       NUM="$(existing_pr_number "$REPO")"
-      echo "==> [$LABEL] opened draft PR #$NUM: $URL"
+      echo "==> [$LABEL] opened draft PR #${NUM:-?}: $URL"
     fi
     printf '{"repo":"%s","number":%s,"url":"%s","branch":"%s"}\n' \
       "$REPO" "${NUM:-null}" "$URL" "$BRANCH" > "$PR_JSON"
@@ -133,7 +156,14 @@ case "$ACTION" in
   finalize)
     [[ "${BENCH_OPEN_PR:-1}" == "1" ]] || exit 0
     command -v gh >/dev/null || exit 0
-    [[ -f "$PR_JSON" ]] || exit 0
+    REPO="$(gh_repo)" || exit 0
+    if [[ ! -f "$PR_JSON" ]]; then
+      NUM="$(existing_pr_number "$REPO")"
+      [[ -n "$NUM" ]] || exit 0
+      URL="$(gh pr view "$NUM" --repo "$REPO" --json url -q .url)"
+      printf '{"repo":"%s","number":%s,"url":"%s","branch":"%s"}\n' \
+        "$REPO" "$NUM" "$URL" "$BRANCH" > "$PR_JSON"
+    fi
     REPO="$(jq -r '.repo' "$PR_JSON")"
     NUM="$(jq -r '.number' "$PR_JSON")"
     [[ -n "$NUM" && "$NUM" != "null" ]] || exit 0
