@@ -71,9 +71,8 @@ echo "==> [$LABEL] fresh branch $BRANCH from $BASE_REF ($(git rev-parse --short 
 git checkout -q -B "$BRANCH" "$BASE_REF"
 git reset -q --hard "$BASE_REF"          # byte-identical start; discards any leftover swap
 BASE_SHA="$(git rev-parse HEAD)"
-if [[ "$ARM" == "outer" ]]; then
-  git push origin --delete "$BRANCH" 2>/dev/null || true
-fi
+git push -u origin "$BRANCH" --force
+bash "$BENCH_DIR/trial-pr.sh" open "$LABEL" "$ARM" "$TRIAL" "$BENCH_PHASE" "$BASE_SHA" || true
 
 # arm-specific Claude settings (working-tree change; fine if the agent commits it
 # on this throwaway branch — CircleCI does not read .claude/).
@@ -95,6 +94,16 @@ if [[ "$ARM" == "inner" ]]; then
   TURNS=$(jq -r '.num_turns // 0'       "$RESULT_JSON" 2>/dev/null || echo 0)
   DUR_MS=$(jq -r '.duration_ms // 0'    "$RESULT_JSON" 2>/dev/null || echo 0)
   IS_ERROR=$(jq -r '.is_error // false' "$RESULT_JSON" 2>/dev/null || echo true)
+  HEAD_AFTER="$(git rev-parse HEAD)"
+  COMMITS=$(git rev-list --count "${BASE_SHA}..${HEAD_AFTER}" 2>/dev/null || echo 0)
+  CI_STATUS="n/a"
+  if [[ "$COMMITS" -gt 0 ]]; then
+    echo "==> [$LABEL] waiting for CI on $BRANCH @ ${HEAD_AFTER:0:8} ..."
+    CIW=$(node "$BENCH_DIR/outer-ci-wait.mjs" "$BRANCH" "$HEAD_AFTER" 900 2>>"$RUN_LOG" | tail -1)
+    CI_STATUS=$(echo "$CIW" | jq -r '.status // "error"' 2>/dev/null || echo error)
+    echo "==> [$LABEL] CI -> $CI_STATUS"
+    [[ "$CI_STATUS" != "success" ]] && IS_ERROR=true
+  fi
 else
   # OUTER: harness-driven push -> WAIT for CI -> resume with failure logs -> repeat.
   # A single headless call can't faithfully wait minutes for CI, so the harness
@@ -140,6 +149,8 @@ Phase 2 rules: complete Milestone 1 (Payments only) before editing miniapps/tran
   done
   END=$(date +%s); WALL=$((END - START))
   [ "$CI_STATUS" = "success" ] && IS_ERROR=false || IS_ERROR=true
+  HEAD_AFTER="$(git rev-parse HEAD)"
+  COMMITS=$(git rev-list --count "${BASE_SHA}..${HEAD_AFTER}" 2>/dev/null || echo 0)
 fi
 
 HEAD_AFTER="$(git rev-parse HEAD)"
@@ -157,6 +168,15 @@ cat > "$RESULTS/${LABEL}.metrics.json" <<EOF
   "iterations": ${ITERS}, "ci_status": "${CI_STATUS}",
   "cost_usd": ${COST}, "turns": ${TURNS}, "is_error": ${IS_ERROR} }
 EOF
+
+bash "$BENCH_DIR/trial-pr.sh" finalize "$LABEL" "$ARM" "$TRIAL" "$BENCH_PHASE" "$BASE_SHA" "$CI_STATUS" || true
+if [[ -f "$RESULTS/${LABEL}.pr.json" ]]; then
+  PR_URL="$(jq -r '.url // ""' "$RESULTS/${LABEL}.pr.json" 2>/dev/null || true)"
+  if [[ -n "$PR_URL" ]]; then
+    jq --arg url "$PR_URL" '. + {pr_url: $url}' "$RESULTS/${LABEL}.metrics.json" > "$RESULTS/${LABEL}.metrics.json.tmp"
+    mv "$RESULTS/${LABEL}.metrics.json.tmp" "$RESULTS/${LABEL}.metrics.json"
+  fi
+fi
 
 # harness metrics (CI minutes + pipeline count are added later by collect-ci.mjs)
 curl -fsS --data-binary @- "${PUSHGW}/metrics/job/bench/loop/${ARM}/trial/${TRIAL}" <<EOF || echo "WARN: pushgateway unreachable"
