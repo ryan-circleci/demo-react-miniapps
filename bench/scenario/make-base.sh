@@ -39,8 +39,8 @@ while i < len(lines):
 open(p, "w").write("".join(out))
 PY
 
-# sanity: no executable Snyk left (comments / the unused derry-snyk context are fine)
-if grep -qE 'snyk test|install -g snyk' .circleci/config.yml; then
+# sanity: no executable Snyk left (comments are fine)
+if grep -vE '^\s*#' .circleci/config.yml | grep -qE 'snyk test|install -g snyk'; then
   echo "ERROR: snyk still executed in CI config after edit" >&2; exit 1
 fi
 if [ "$(jq '[.commands[]|select(.name|test("snyk"))]|length' .chunk/config.json)" != "0" ]; then
