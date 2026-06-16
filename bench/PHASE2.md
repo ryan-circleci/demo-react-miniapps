@@ -233,6 +233,14 @@ BENCH_PHASE=2 bash bench/run-bench.sh 5
 
 ---
 
+## Trial PR artifacts
+
+Each `run-trial.sh` invocation opens a **draft PR** on `bench/<arm>-<trial>` as soon as the trial branch is pushed (seed state). Commits and CI runs accumulate on the PR as the agent works. When the trial finishes with **green CI**, `trial-pr.sh finalize` marks the PR **ready for review** and updates the body with run metrics. Links appear in `report-phase2.md` per-trial table.
+
+Disable with `BENCH_OPEN_PR=0`. Set `BENCH_GH_REPO=owner/repo` if `gh` resolves the wrong remote.
+
+---
+
 ## CI prerequisites
 
 CircleCI must be set up on the repo that receives agent pushes (default: `origin`).

@@ -13,6 +13,7 @@
 #   - chunk sidecar up:     chunk sidecar current   (needed by the inner arm)
 #   - clean working tree:   no uncommitted TRACKED changes (run-trial hard-resets)
 #   - CircleCI token:       $CIRCLE_TOKEN (or $CIRCLECI_TOKEN) for CI-minute collection
+#   - GitHub CLI:           gh auth (for draft PR artifacts per trial; set BENCH_OPEN_PR=0 to disable)
 set -euo pipefail
 
 N="${1:-5}"
@@ -35,6 +36,7 @@ DIRTY="$(git status --porcelain --untracked-files=no)"
 [[ -z "$DIRTY" ]] || fail "uncommitted tracked changes present; commit/stash first:\n$DIRTY"
 # 4. CI token (warn only — collection can be re-run later)
 [[ -n "${CIRCLE_TOKEN:-${CIRCLECI_TOKEN:-}}" ]] || echo "WARN: no CIRCLE_TOKEN — CI-minute collection will be skipped (re-run collect-ci.mjs later)"
+command -v gh >/dev/null || echo "WARN: gh not found — trial PR artifacts will be skipped (set BENCH_OPEN_PR=0 to silence)"
 
 START_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 git config push.autoSetupRemote true   # so the agent's bare `git push` works on a new branch

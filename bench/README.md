@@ -41,6 +41,12 @@ For the outer arm, the scripts own the CI wait (push → block until the real
 pipeline finishes → feed the result back via `--resume` → repeat), so the
 outer-loop clock honestly includes the minutes a developer waits on CI.
 
+Each trial also opens a **draft GitHub PR** on its throwaway branch (`bench/<arm>-<trial>`)
+as a durable artifact (commit history, CI checks, run summary in the PR body).
+When the trial finishes with green CI, the PR is marked ready for review.
+Set `BENCH_OPEN_PR=0` to disable. Override the repo with `BENCH_GH_REPO=owner/repo`
+if `gh` resolves the wrong remote.
+
 ## Run it yourself
 
 ```bash
@@ -62,6 +68,7 @@ open bench/report.md      # http://localhost:3000/d/inner-vs-outer
 |---|---|
 | `run-bench.sh` | orchestrator — runs all trials, then collect + aggregate |
 | `run-trial.sh` | one trial (inner = single run; outer = push/wait/resume loop) |
+| `trial-pr.sh` | opens a **draft PR** per trial branch at start; marks **ready for review** when CI is green |
 | `outer-ci-wait.mjs` | waits for the real CircleCI pipeline, returns status + failure logs |
 | `collect-ci.mjs` | pulls CI compute minutes per branch from the CircleCI API |
 | `aggregate.mjs` | turns raw per-trial data into `report.md` |

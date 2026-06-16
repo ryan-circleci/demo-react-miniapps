@@ -2,9 +2,7 @@ version: 2.1
 
 # demo-react-miniapps — validation pipeline for React Native mini-apps.
 # Gate order mirrors .chunk/config.json: install → lint → Trivy → test → bundle.
-#
-# Set SNYK_TOKEN in Project Settings → Environment Variables to enable Snyk
-# (optional; uncomment the Snyk steps below). Trivy needs no secret.
+# Snyk is omitted (no CI token in this demo); Trivy covers dependency scanning.
 
 jobs:
   validate-miniapp:
@@ -44,13 +42,6 @@ jobs:
           key: v1-trivy-db-{{ epoch }}
           paths:
             - ~/.cache/trivy
-      # Optional — requires SNYK_TOKEN in project env vars:
-      # - run:
-      #     name: Install Snyk CLI
-      #     command: sudo npm install -g snyk
-      # - run:
-      #     name: "Scan: Snyk (severity high+)"
-      #     command: cd << parameters.miniapp_path >> && snyk test --severity-threshold=high
       - run:
           name: Test
           command: cd << parameters.miniapp_path >> && npm test -- --watchAll=false

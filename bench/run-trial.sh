@@ -49,6 +49,14 @@ RUN_LOG="$RESULTS/${LABEL}.log"
 # files — checkout would delete them from the working tree.
 PROMPT="$(cat "$BENCH_DIR/scenario/preamble-${ARM}${PREAMBLE_SUFFIX}.md"; echo; cat "$BENCH_DIR/scenario/${TASK_FILE}")"
 SETTINGS="$(cat "$BENCH_DIR/env/settings-${ARM}.json")"
+# Trial branches are cut from bench/base* and do not carry harness scripts; cache
+# trial-pr.sh before checkout deletes it from the working tree.
+TRIAL_PR=""
+if [[ -f "$BENCH_DIR/trial-pr.sh" ]]; then
+  TRIAL_PR="$RESULTS/.trial-pr.sh"
+  cp "$BENCH_DIR/trial-pr.sh" "$TRIAL_PR"
+  chmod +x "$TRIAL_PR"
+fi
 # shellcheck disable=SC1091
 source "$BENCH_DIR/env/shared.env"
 export OTEL_RESOURCE_ATTRIBUTES="loop=${ARM},trial=${TRIAL}"
@@ -71,8 +79,9 @@ echo "==> [$LABEL] fresh branch $BRANCH from $BASE_REF ($(git rev-parse --short 
 git checkout -q -B "$BRANCH" "$BASE_REF"
 git reset -q --hard "$BASE_REF"          # byte-identical start; discards any leftover swap
 BASE_SHA="$(git rev-parse HEAD)"
-if [[ "$ARM" == "outer" ]]; then
-  git push origin --delete "$BRANCH" 2>/dev/null || true
+git push -u origin "$BRANCH" --force
+if [[ -n "$TRIAL_PR" ]]; then
+  bash "$TRIAL_PR" open "$LABEL" "$ARM" "$TRIAL" "$BENCH_PHASE" "$BASE_SHA" || true
 fi
 
 # arm-specific Claude settings (working-tree change; fine if the agent commits it
@@ -95,6 +104,16 @@ if [[ "$ARM" == "inner" ]]; then
   TURNS=$(jq -r '.num_turns // 0'       "$RESULT_JSON" 2>/dev/null || echo 0)
   DUR_MS=$(jq -r '.duration_ms // 0'    "$RESULT_JSON" 2>/dev/null || echo 0)
   IS_ERROR=$(jq -r '.is_error // false' "$RESULT_JSON" 2>/dev/null || echo true)
+  HEAD_AFTER="$(git rev-parse HEAD)"
+  COMMITS=$(git rev-list --count "${BASE_SHA}..${HEAD_AFTER}" 2>/dev/null || echo 0)
+  CI_STATUS="n/a"
+  if [[ "$COMMITS" -gt 0 ]]; then
+    echo "==> [$LABEL] waiting for CI on $BRANCH @ ${HEAD_AFTER:0:8} ..."
+    CIW=$(node "$BENCH_DIR/outer-ci-wait.mjs" "$BRANCH" "$HEAD_AFTER" 900 2>>"$RUN_LOG" | tail -1)
+    CI_STATUS=$(echo "$CIW" | jq -r '.status // "error"' 2>/dev/null || echo error)
+    echo "==> [$LABEL] CI -> $CI_STATUS"
+    [[ "$CI_STATUS" != "success" ]] && IS_ERROR=true
+  fi
 else
   # OUTER: harness-driven push -> WAIT for CI -> resume with failure logs -> repeat.
   # A single headless call can't faithfully wait minutes for CI, so the harness
@@ -140,6 +159,8 @@ Phase 2 rules: complete Milestone 1 (Payments only) before editing miniapps/tran
   done
   END=$(date +%s); WALL=$((END - START))
   [ "$CI_STATUS" = "success" ] && IS_ERROR=false || IS_ERROR=true
+  HEAD_AFTER="$(git rev-parse HEAD)"
+  COMMITS=$(git rev-list --count "${BASE_SHA}..${HEAD_AFTER}" 2>/dev/null || echo 0)
 fi
 
 HEAD_AFTER="$(git rev-parse HEAD)"
@@ -157,6 +178,17 @@ cat > "$RESULTS/${LABEL}.metrics.json" <<EOF
   "iterations": ${ITERS}, "ci_status": "${CI_STATUS}",
   "cost_usd": ${COST}, "turns": ${TURNS}, "is_error": ${IS_ERROR} }
 EOF
+
+if [[ -n "$TRIAL_PR" ]]; then
+  bash "$TRIAL_PR" finalize "$LABEL" "$ARM" "$TRIAL" "$BENCH_PHASE" "$BASE_SHA" "$CI_STATUS" || true
+fi
+if [[ -n "$TRIAL_PR" ]] && [[ -f "$RESULTS/${LABEL}.pr.json" ]]; then
+  PR_URL="$(jq -r '.url // ""' "$RESULTS/${LABEL}.pr.json" 2>/dev/null || true)"
+  if [[ -n "$PR_URL" ]]; then
+    jq --arg url "$PR_URL" '. + {pr_url: $url}' "$RESULTS/${LABEL}.metrics.json" > "$RESULTS/${LABEL}.metrics.json.tmp"
+    mv "$RESULTS/${LABEL}.metrics.json.tmp" "$RESULTS/${LABEL}.metrics.json"
+  fi
+fi
 
 # harness metrics (CI minutes + pipeline count are added later by collect-ci.mjs)
 curl -fsS --data-binary @- "${PUSHGW}/metrics/job/bench/loop/${ARM}/trial/${TRIAL}" <<EOF || echo "WARN: pushgateway unreachable"

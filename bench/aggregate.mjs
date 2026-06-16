@@ -32,6 +32,7 @@ for (const f of readdirSync(RESULTS).filter((f) => f.endsWith(".metrics.json")))
   const m = readJSON(join(RESULTS, f)) || {};
   const r = readJSON(join(RESULTS, `${label}.json`)) || {};
   const ci = readJSON(join(RESULTS, `${label}.ci.json`)) || {};
+  const pr = readJSON(join(RESULTS, `${label}.pr.json`)) || {};
   const u = r.usage || {};
   const tokens =
     (u.input_tokens || 0) + (u.output_tokens || 0) +
@@ -48,6 +49,7 @@ for (const f of readdirSync(RESULTS).filter((f) => f.endsWith(".metrics.json")))
     ci_min: (ci.ci_seconds ?? NaN) / 60,
     pipelines: ci.ci_pipelines ?? NaN,
     is_error: m.is_error === true || r.is_error === true,
+    pr_url: m.pr_url || pr.url || "",
   });
 }
 
@@ -139,10 +141,11 @@ for (const [name, key, d] of metrics) {
 }
 
 md += `## Per-trial detail\n\n`;
-md += `| arm | trial | wall(s) | cost($) | turns | iters | tokens | CI(min) | pipelines | error |\n`;
-md += `|---|--:|--:|--:|--:|--:|--:|--:|--:|:-:|\n`;
+md += `| arm | trial | wall(s) | cost($) | turns | iters | tokens | CI(min) | pipelines | PR | error |\n`;
+md += `|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|:--|:-:|\n`;
 for (const t of useTrials.sort((a, b) => (a.arm + a.trial).localeCompare(b.arm + b.trial))) {
-  md += `| ${t.arm} | ${t.trial} | ${fmt(t.wall, 0)} | ${fmt(t.cost, 4)} | ${t.turns} | ${fmt(t.iterations, 0)} | ${fmt(t.tokens, 0)} | ${fmt(t.ci_min, 1)} | ${fmt(t.pipelines, 0)} | ${t.is_error ? "✗" : "✓"} |\n`;
+  const pr = t.pr_url ? `[trial](${t.pr_url})` : "—";
+  md += `| ${t.arm} | ${t.trial} | ${fmt(t.wall, 0)} | ${fmt(t.cost, 4)} | ${t.turns} | ${fmt(t.iterations, 0)} | ${fmt(t.tokens, 0)} | ${fmt(t.ci_min, 1)} | ${fmt(t.pipelines, 0)} | ${pr} | ${t.is_error ? "✗" : "✓"} |\n`;
 }
 md += `\n_Live dashboard: http://localhost:3000/d/inner-vs-outer_\n`;
 

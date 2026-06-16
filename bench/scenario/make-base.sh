@@ -2,12 +2,10 @@
 #
 # make-base.sh [BASE_REF]   (default: origin/main)
 #
-# Builds the bench/base branch: BASE_REF with the Snyk gates removed from BOTH
-# .chunk/config.json (sidecar) and .circleci/config.yml (CI), so the inner and
-# outer arms validate the SAME reduced, reliable gate set:
-#   install + lint + Trivy + test + bundle  (for both mini-apps).
-# Snyk is dropped because its CI token is expired and the agent cannot fix
-# credentials; Trivy is kept (verified clean on sidecar + CI). main is untouched.
+# Builds the bench/base branch from BASE_REF, idempotently ensuring the reduced
+# gate set (install + lint + Trivy + test + bundle × 2 mini-apps). Snyk is
+# excluded — expired CI credential the agent cannot fix; Trivy is kept.
+# main is aligned to this gate set; make-base is a no-op when already matched.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
@@ -51,5 +49,9 @@ if [ "$(jq '[.commands[]|select(.name|test("snyk"))]|length' .chunk/config.json)
 fi
 
 git add .chunk/config.json .circleci/config.yml
-git commit -q -m "bench: reduced gate set (drop Snyk; keep install/lint/Trivy/test/bundle)"
-echo "bench/base ready at $(git rev-parse --short HEAD) (gates: $(jq -r '[.commands[]|select(.role=="gate").name]|join(", ")' .chunk/config.json))"
+if git diff --cached --quiet; then
+  echo "bench/base already matches reduced gate set at $(git rev-parse --short HEAD)"
+else
+  git commit -q -m "bench: reduced gate set (drop Snyk; keep install/lint/Trivy/test/bundle)"
+  echo "bench/base ready at $(git rev-parse --short HEAD) (gates: $(jq -r '[.commands[]|select(.role=="gate").name]|join(", ")' .chunk/config.json))"
+fi

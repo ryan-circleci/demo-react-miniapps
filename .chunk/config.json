@@ -43,22 +43,6 @@
       "limit": 3
     },
     {
-      "name": "scan-payments-snyk",
-      "run": "cd miniapps/payments && snyk test --severity-threshold=high",
-      "role": "gate",
-      "remote": true,
-      "timeout": 180,
-      "limit": 3
-    },
-    {
-      "name": "scan-transfers-snyk",
-      "run": "cd miniapps/transfers && snyk test --severity-threshold=high",
-      "role": "gate",
-      "remote": true,
-      "timeout": 180,
-      "limit": 3
-    },
-    {
       "name": "test-payments",
       "run": "cd miniapps/payments && npm test -- --watchAll=false",
       "role": "gate",
