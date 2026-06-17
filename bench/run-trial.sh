@@ -138,7 +138,7 @@ maybe_open_trial_pr() {
 }
 
 # arm-specific Claude settings (harness-managed; restored after each agent turn).
-restore_harness_settings()
+restore_harness_settings
 
 ITERS=1; CI_STATUS="n/a"
 if [[ "$ARM" == "inner" ]]; then
