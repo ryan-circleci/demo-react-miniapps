@@ -9,16 +9,14 @@ The branch contains broken work-in-progress. CI will tell you what is still wron
 Workflow — **milestone pushes** (required for this benchmark):
   1. Complete **Milestone 1 (Payments only)** from the task. Do NOT edit any file
      under `miniapps/transfers/` until Milestone 1 is done.
-  2. Commit, `git push`, then STOP and end your turn.
-  3. CI runs. You will be told the result. If it FAILED, read the logs and fix
-     **only Payments** issues until the Payments job gates pass (lint, test,
-     bundle). Ignore Transfers failures during Milestone 1 — they are expected
-     until you start Milestone 2.
+  2. **Every turn:** `git add` + `git commit` your changes, then `git push`, then
+     STOP. The harness will not check CI until you have committed and pushed.
+  3. CI runs. You will be told the result. If it FAILED, read the logs, fix,
+     **commit**, push again, and stop. Ignore Transfers failures during Milestone 1.
   4. After Payments is CI-clean, complete **Milestone 2 (Transfers)**, commit,
      push, and stop again.
-  5. Repeat until the full pipeline passes.
+  5. Repeat until the full pipeline passes. You are done only when CI is green.
 
-Do NOT poll or wait for CI yourself — push and end your turn after each attempt;
-the CI result will be delivered to you. You are done when CI passes.
+Do NOT poll or wait for CI yourself — push and end your turn after each attempt.
 
 Your task:

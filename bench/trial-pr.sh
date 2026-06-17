@@ -116,8 +116,24 @@ pr_title() {
 
 existing_pr_number() {
   local repo="$1"
-  gh pr list --repo "$repo" --head "$BRANCH" --state all --json number,url \
+  gh pr list --repo "$repo" --head "$BRANCH" --state open --json number \
     -q '.[0].number // empty' 2>/dev/null || true
+}
+
+existing_closed_pr_number() {
+  local repo="$1"
+  gh pr list --repo "$repo" --head "$BRANCH" --state closed --json number \
+    -q '.[0].number // empty' 2>/dev/null || true
+}
+
+ensure_pr_open() {
+  local repo="$1" num="$2"
+  local state
+  state="$(gh pr view "$num" --repo "$repo" --json state -q .state 2>/dev/null || echo "")"
+  if [[ "$state" == "CLOSED" ]]; then
+    gh pr reopen "$num" --repo "$repo" 2>/dev/null \
+      && echo "==> [$LABEL] reopened closed PR #$num"
+  fi
 }
 
 case "$ACTION" in
@@ -128,8 +144,14 @@ case "$ACTION" in
 
     NUM="$(existing_pr_number "$REPO")"
     if [[ -n "$NUM" ]]; then
+      ensure_pr_open "$REPO" "$NUM"
       URL="$(gh pr view "$NUM" --repo "$REPO" --json url -q .url)"
-      echo "==> [$LABEL] draft PR already exists: $URL"
+      echo "==> [$LABEL] draft PR already open: $URL"
+    elif NUM="$(existing_closed_pr_number "$REPO")" && [[ -n "$NUM" ]]; then
+      ensure_pr_open "$REPO" "$NUM"
+      gh pr edit "$NUM" --repo "$REPO" --title "$(pr_title)" --body "$(pr_body_initial)" 2>/dev/null || true
+      URL="$(gh pr view "$NUM" --repo "$REPO" --json url -q .url)"
+      echo "==> [$LABEL] reopened draft PR #$NUM: $URL"
     else
       URL=""
       err=""
@@ -164,6 +186,7 @@ case "$ACTION" in
     REPO="$(gh_repo)" || exit 0
     if [[ ! -f "$PR_JSON" ]]; then
       NUM="$(existing_pr_number "$REPO")"
+      [[ -n "$NUM" ]] || NUM="$(existing_closed_pr_number "$REPO")"
       [[ -n "$NUM" ]] || exit 0
       URL="$(gh pr view "$NUM" --repo "$REPO" --json url -q .url)"
       printf '{"repo":"%s","number":%s,"url":"%s","branch":"%s"}\n' \
@@ -172,6 +195,8 @@ case "$ACTION" in
     REPO="$(jq -r '.repo' "$PR_JSON")"
     NUM="$(jq -r '.number' "$PR_JSON")"
     [[ -n "$NUM" && "$NUM" != "null" ]] || exit 0
+
+    ensure_pr_open "$REPO" "$NUM"
 
     gh pr edit "$NUM" --repo "$REPO" --body "$(pr_body_finalize)" 2>/dev/null \
       || echo "WARN: could not update PR body for #$NUM"

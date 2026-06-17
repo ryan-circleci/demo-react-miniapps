@@ -27,6 +27,18 @@ PUSHGW="${PUSHGW:-http://localhost:9091}"
 mkdir -p "$RESULTS"
 cd "$REPO_ROOT"
 
+has_uncommitted() {
+  ! git diff --quiet HEAD || ! git diff --cached --quiet
+}
+
+unpushed_count() {
+  git rev-list --count @{u}..HEAD 2>/dev/null || echo 0
+}
+
+COMMIT_FEEDBACK='You have uncommitted changes. Run git add and git commit to record this iteration'\''s work, then stop. Do not push yet unless the harness tells you to.'
+
+PUSH_FEEDBACK='Your changes are committed locally but not on origin. Run git push, then stop.'
+
 if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
   echo "ERROR: git rebase in progress — run: git rebase --abort" >&2
   exit 1
@@ -123,6 +135,12 @@ if [[ "$ARM" == "inner" ]]; then
     DUR_MS=$((DUR_MS + $(jq -r '.duration_ms // 0' "$ij" 2>/dev/null || echo 0)))
     cp "$ij" "$RESULT_JSON"
 
+    if has_uncommitted; then
+      echo "==> [$LABEL] uncommitted changes — commit required before validate"
+      FEEDBACK="$COMMIT_FEEDBACK"
+      continue
+    fi
+
     VAL_LOG="$RESULTS/${LABEL}.validate${ITERS}.log"
     echo "==> [$LABEL] sidecar validate (iteration $ITERS) ..."
     set +e
@@ -137,33 +155,26 @@ $(tail -120 "$VAL_LOG")"
       continue
     fi
 
-    DIRTY=0
-    git diff --quiet HEAD && git diff --cached --quiet || DIRTY=1
-    AHEAD="$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0)"
     HEAD_NOW="$(git rev-parse HEAD)"
+    AHEAD="$(unpushed_count)"
 
-    if [[ $DIRTY -eq 1 ]]; then
-      echo "==> [$LABEL] sidecar green; uncommitted changes remain"
-      FEEDBACK="Sidecar validation passed on your working tree. Commit all changes now (git add + git commit), then stop. Do not push until committed."
-      continue
-    fi
     if [[ "$AHEAD" -ge 1 ]]; then
       echo "==> [$LABEL] sidecar green; ${AHEAD} commit(s) not pushed yet"
-      FEEDBACK="Sidecar validation passed and your changes are committed locally (${AHEAD} commit(s) ahead of origin). Run git push now, then stop."
+      FEEDBACK="Sidecar validation passed (${AHEAD} local commit(s) not on origin). $PUSH_FEEDBACK"
       continue
     fi
 
     COMMITS_LOCAL="$(git rev-list --count "${BASE_SHA}..HEAD" 2>/dev/null || echo 0)"
     if [[ "$COMMITS_LOCAL" -lt 1 ]]; then
       echo "==> [$LABEL] sidecar green; no commits yet"
-      FEEDBACK="Sidecar validation passed but there are no commits yet. git add, git commit, git push, then stop."
+      FEEDBACK="Sidecar validation passed but there are no commits yet. $COMMIT_FEEDBACK"
       continue
     fi
 
     REMOTE_HEAD="$(git rev-parse '@{u}' 2>/dev/null || echo "")"
     if [[ -n "$REMOTE_HEAD" && "$(git rev-parse HEAD)" != "$REMOTE_HEAD" ]]; then
       echo "==> [$LABEL] sidecar green; local HEAD != origin (push required)"
-      FEEDBACK="Sidecar validation passed but origin does not have your latest commit. Run git push, then stop."
+      FEEDBACK="Sidecar validation passed but origin does not have your latest commit. $PUSH_FEEDBACK"
       continue
     fi
 
@@ -213,19 +224,36 @@ else
     TURNS=$((TURNS + $(jq -r '.num_turns // 0' "$ij" 2>/dev/null || echo 0)))
     DUR_MS=$((DUR_MS + $(jq -r '.duration_ms // 0' "$ij" 2>/dev/null || echo 0)))
     cp "$ij" "$RESULT_JSON"
+
+    if has_uncommitted; then
+      echo "==> [$LABEL] uncommitted changes — commit required before CI"
+      FEEDBACK="$COMMIT_FEEDBACK"
+      continue
+    fi
+    if [[ "$(unpushed_count)" -ge 1 ]]; then
+      echo "==> [$LABEL] $(unpushed_count) commit(s) not pushed — push required before CI"
+      FEEDBACK="$PUSH_FEEDBACK"
+      continue
+    fi
+
     HEAD_NOW="$(git rev-parse HEAD)"
     echo "==> [$LABEL] waiting for CI on $BRANCH @ ${HEAD_NOW:0:8} ..."
     CIW=$(node "$BENCH_DIR/outer-ci-wait.mjs" "$BRANCH" "$HEAD_NOW" 900 2>>"$RUN_LOG" | tail -1)
     CI_STATUS=$(echo "$CIW" | jq -r '.status // "error"' 2>/dev/null || echo error)
     echo "==> [$LABEL] CI iteration $ITERS -> $CI_STATUS"
     [ "$CI_STATUS" = "success" ] && break
-    if [ "$CI_STATUS" != "failed" ]; then echo "==> [$LABEL] CI $CI_STATUS — stopping outer loop"; break; fi
-    FEEDBACK="The CI pipeline for this branch FAILED. You cannot validate locally; CI is your only signal. Failure logs:
+    if [ "$CI_STATUS" = "failed" ]; then
+      FEEDBACK="The CI pipeline for this branch FAILED. You cannot validate locally; CI is your only signal. Failure logs:
 
 $(echo "$CIW" | jq -r '.feedback // "no logs"' 2>/dev/null)
 
 Fix the problem, commit, and push again, then stop. Do not poll CI yourself — you will be told the new result."
-    if [[ "$BENCH_PHASE" == "2" ]]; then
+    else
+      FEEDBACK="CI wait ended with status ${CI_STATUS}. Commit any fixes, push, then stop.
+
+$(echo "$CIW" | jq -r '.feedback // "no logs"' 2>/dev/null)"
+    fi
+    if [[ "$BENCH_PHASE" == "2" && "$CI_STATUS" = "failed" ]]; then
       FEEDBACK="${FEEDBACK}
 
 Phase 2 rules: complete Milestone 1 (Payments only) before editing miniapps/transfers/. Ignore Transfers failures until Payments is CI-clean. Do not git pull, git fetch, or rebase — push only."

@@ -5,13 +5,11 @@ outer loop — commit, push, and let CircleCI run the gates (lint, Trivy, tests,
 iOS bundle for both mini-apps).
 
 Workflow:
-  1. Make your change, commit it, and `git push`. Then STOP and end your turn.
-  2. CI runs. You will be told the result. If it FAILED, you will be given the
-     failure logs — fix the issue, commit, push again, and stop.
-  3. Repeat until CI passes.
+  1. **Every turn:** make your change, `git add` + `git commit`, then `git push`.
+     Then STOP. The harness will not check CI until you have committed and pushed.
+  2. CI runs. You will be told the result. If it FAILED, fix, commit, push, stop.
+  3. Repeat until CI passes. You are done only when CI is green.
 
-Do NOT attempt to poll, watch, or wait for CI yourself, and do not assume any
-"scheduled wakeup" — just push and end your turn after each attempt; the CI
-result will be delivered to you. You are done when CI passes.
+Do NOT poll or wait for CI yourself — the result will be delivered to you.
 
 Your task:
