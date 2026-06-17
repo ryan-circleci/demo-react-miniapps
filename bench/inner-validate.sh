@@ -10,5 +10,6 @@ else
   PTY="$SCRIPT_DIR/chunk-validate-pty.sh"
 fi
 cd "$ROOT"
+export BENCH_REPO_ROOT="$ROOT"
 chunk sidecar sync
-exec bash "$PTY"
+exec env BENCH_REPO_ROOT="$ROOT" bash "$PTY"

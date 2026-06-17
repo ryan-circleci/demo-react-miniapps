@@ -39,6 +39,13 @@ COMMIT_FEEDBACK='You have uncommitted changes. Run git add and git commit to rec
 
 PUSH_FEEDBACK='Your changes are committed locally but not on origin. Run git push, then stop.'
 
+MULTI_COMMIT_FEEDBACK='Sidecar validation passed but you have multiple unpushed commits. Make exactly ONE commit per iteration — amend or squash so only one commit is ahead of origin, then stop. Do not push yet.'
+
+restore_harness_settings() {
+  mkdir -p "$REPO_ROOT/.claude"
+  printf '%s\n' "$SETTINGS" > "$REPO_ROOT/.claude/settings.json"
+}
+
 if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
   echo "ERROR: git rebase in progress — run: git rebase --abort" >&2
   exit 1
@@ -70,11 +77,17 @@ if [[ -f "$BENCH_DIR/trial-pr.sh" ]]; then
   chmod +x "$TRIAL_PR"
 fi
 INNER_VALIDATE=""
+VALIDATE_LOG_CHECK=""
 if [[ "$ARM" == "inner" && -f "$BENCH_DIR/inner-validate.sh" ]]; then
   INNER_VALIDATE="$RESULTS/.inner-validate.sh"
   cp "$BENCH_DIR/inner-validate.sh" "$INNER_VALIDATE"
   cp "$BENCH_DIR/chunk-validate-pty.sh" "$RESULTS/.chunk-validate-pty.sh"
   chmod +x "$INNER_VALIDATE" "$RESULTS/.chunk-validate-pty.sh"
+  if [[ -f "$BENCH_DIR/validate-log-check.sh" ]]; then
+    VALIDATE_LOG_CHECK="$RESULTS/.validate-log-check.sh"
+    cp "$BENCH_DIR/validate-log-check.sh" "$VALIDATE_LOG_CHECK"
+    chmod +x "$VALIDATE_LOG_CHECK"
+  fi
 fi
 # shellcheck disable=SC1091
 source "$BENCH_DIR/env/shared.env"
@@ -124,10 +137,8 @@ maybe_open_trial_pr() {
   bash "$TRIAL_PR" open "$LABEL" "$ARM" "$TRIAL" "$BENCH_PHASE" "$BASE_SHA" || true
 }
 
-# arm-specific Claude settings (working-tree change; fine if the agent commits it
-# on this throwaway branch — CircleCI does not read .claude/).
-mkdir -p "$REPO_ROOT/.claude"
-printf '%s\n' "$SETTINGS" > "$REPO_ROOT/.claude/settings.json"
+# arm-specific Claude settings (harness-managed; restored after each agent turn).
+restore_harness_settings()
 
 ITERS=1; CI_STATUS="n/a"
 if [[ "$ARM" == "inner" ]]; then
@@ -156,6 +167,8 @@ if [[ "$ARM" == "inner" ]]; then
     DUR_MS=$((DUR_MS + $(jq -r '.duration_ms // 0' "$ij" 2>/dev/null || echo 0)))
     cp "$ij" "$RESULT_JSON"
 
+    restore_harness_settings
+
     if has_uncommitted; then
       echo "==> [$LABEL] uncommitted changes — commit required before validate"
       FEEDBACK="$COMMIT_FEEDBACK"
@@ -168,10 +181,15 @@ if [[ "$ARM" == "inner" ]]; then
     set +e
     bash "$INNER_VALIDATE" >"$VAL_LOG" 2>&1
     VAL_RC=$?
+    if [[ $VAL_RC -eq 0 && -n "$VALIDATE_LOG_CHECK" ]]; then
+      if ! bash "$VALIDATE_LOG_CHECK" "$VAL_LOG" >/dev/null 2>&1; then
+        VAL_RC=1
+      fi
+    fi
     set -e
     if [[ $VAL_RC -ne 0 ]]; then
       echo "==> [$LABEL] sidecar validate FAILED (rc=$VAL_RC)"
-      FEEDBACK="Sidecar validation FAILED. Fix every error below, then stop again. Do not push until validation passes on both mini-apps.
+      FEEDBACK="Sidecar validation FAILED. Fix every error below on BOTH mini-apps, then commit and stop. Do not push until validation passes.
 
 $(tail -120 "$VAL_LOG")"
       continue
@@ -179,6 +197,12 @@ $(tail -120 "$VAL_LOG")"
 
     HEAD_NOW="$(git rev-parse HEAD)"
     AHEAD="$(unpushed_count)"
+
+    if [[ "$AHEAD" -gt 1 ]]; then
+      echo "==> [$LABEL] sidecar green; ${AHEAD} unpushed commits (max 1 before push)"
+      FEEDBACK="$MULTI_COMMIT_FEEDBACK"
+      continue
+    fi
 
     if [[ "$AHEAD" -ge 1 ]]; then
       echo "==> [$LABEL] sidecar green; ${AHEAD} commit(s) not pushed yet"
@@ -246,6 +270,8 @@ else
     TURNS=$((TURNS + $(jq -r '.num_turns // 0' "$ij" 2>/dev/null || echo 0)))
     DUR_MS=$((DUR_MS + $(jq -r '.duration_ms // 0' "$ij" 2>/dev/null || echo 0)))
     cp "$ij" "$RESULT_JSON"
+
+    restore_harness_settings
 
     if has_uncommitted; then
       echo "==> [$LABEL] uncommitted changes — commit required before CI"

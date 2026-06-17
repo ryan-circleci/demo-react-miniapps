@@ -13,6 +13,9 @@
     ],
     "deny": [
       "Bash(chunk validate*)",
+      "Bash(git add .claude*)",
+      "Bash(git add:.claude*)",
+      "Bash(git commit * .claude*)",
       "Bash(npm *)",
       "Bash(npx *)",
       "Bash(jest *)",

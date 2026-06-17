@@ -86,7 +86,7 @@ git add \
   miniapps/payments/src/App.js \
   miniapps/payments/__tests__/App.test.js \
   miniapps/transfers/__tests__/App.test.js
-git commit -q -m "bench: phase2 layered seed (lint + payments test + transfers test)"
+git commit -q -m "bench: phase2 layered seed (lint + payments test + transfers test) [skip ci]"
 
 echo "bench/base-phase2 ready at $(git rev-parse --short HEAD)"
 echo "  payments lint:  unused pendingTransfers, draftMemo (+ unused in test file)"

@@ -2,7 +2,6 @@
 # Inner-arm Stop hook: validate on sidecar, then block stop until commit + push.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 if [[ "$(basename "$SCRIPT_DIR")" == "results" ]]; then
   ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   PTY="$SCRIPT_DIR/.chunk-validate-pty.sh"
@@ -11,8 +10,9 @@ else
   PTY="$SCRIPT_DIR/chunk-validate-pty.sh"
 fi
 cd "$ROOT"
+export BENCH_REPO_ROOT="$ROOT"
 
-if ! bash "$PTY"; then
+if ! env BENCH_REPO_ROOT="$ROOT" bash "$PTY"; then
   exit 1
 fi
 
