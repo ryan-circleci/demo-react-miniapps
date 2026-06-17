@@ -58,7 +58,18 @@ if [[ -f "$BENCH_DIR/trial-pr.sh" ]]; then
   chmod +x "$TRIAL_PR"
 fi
 VALIDATE_PTY=""
-if [[ -f "$BENCH_DIR/chunk-validate-pty.sh" ]]; then
+if [[ "$ARM" == "inner" ]]; then
+  if [[ -f "$BENCH_DIR/chunk-validate-inner-stop.sh" ]]; then
+    VALIDATE_PTY="$RESULTS/.chunk-validate-inner-stop.sh"
+    cp "$BENCH_DIR/chunk-validate-inner-stop.sh" "$VALIDATE_PTY"
+    cp "$BENCH_DIR/chunk-validate-pty.sh" "$RESULTS/.chunk-validate-pty.sh"
+    chmod +x "$VALIDATE_PTY" "$RESULTS/.chunk-validate-pty.sh"
+  elif [[ -f "$BENCH_DIR/chunk-validate-pty.sh" ]]; then
+    VALIDATE_PTY="$RESULTS/.chunk-validate-pty.sh"
+    cp "$BENCH_DIR/chunk-validate-pty.sh" "$VALIDATE_PTY"
+    chmod +x "$VALIDATE_PTY"
+  fi
+elif [[ -f "$BENCH_DIR/chunk-validate-pty.sh" ]]; then
   VALIDATE_PTY="$RESULTS/.chunk-validate-pty.sh"
   cp "$BENCH_DIR/chunk-validate-pty.sh" "$VALIDATE_PTY"
   chmod +x "$VALIDATE_PTY"
