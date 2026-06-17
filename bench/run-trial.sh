@@ -95,6 +95,7 @@ if [[ "$BENCH_PHASE" == "2" ]]; then
   }
 fi
 echo "==> [$LABEL] fresh branch $BRANCH from $BASE_REF ($(git rev-parse --short "$BASE_REF"))"
+rm -f "$RESULTS/${LABEL}.pr.json"
 git checkout -q -B "$BRANCH" "$BASE_REF"
 git reset -q --hard "$BASE_REF"          # byte-identical start; discards any leftover swap
 BASE_SHA="$(git rev-parse HEAD)"
@@ -109,7 +110,16 @@ maybe_open_trial_pr() {
   [[ "$commits_now" -ge 1 ]] || return 0
   if [[ -f "$RESULTS/${LABEL}.pr.json" ]]; then
     url="$(jq -r '.url // empty' "$RESULTS/${LABEL}.pr.json" 2>/dev/null || true)"
-    [[ -n "$url" ]] && return 0
+    num="$(jq -r '.number // empty' "$RESULTS/${LABEL}.pr.json" 2>/dev/null || true)"
+    if [[ -n "$url" && -n "$num" && "$num" != "null" ]]; then
+      repo="${BENCH_GH_REPO:-}"
+      if [[ -z "$repo" ]]; then
+        repo="$(git remote get-url origin 2>/dev/null | sed -n 's/.*github\.com[:/]\+\([^/]*\/[^/.]*\).*/\1/p')"
+      fi
+      state="$(gh pr view "$num" --repo "$repo" --json state -q .state 2>/dev/null || echo "")"
+      [[ "$state" == "OPEN" ]] && return 0
+    fi
+    rm -f "$RESULTS/${LABEL}.pr.json"
   fi
   bash "$TRIAL_PR" open "$LABEL" "$ARM" "$TRIAL" "$BENCH_PHASE" "$BASE_SHA" || true
 }
