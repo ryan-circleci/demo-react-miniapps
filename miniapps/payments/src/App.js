@@ -1,10 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 const App = () => {
   const handleSend = () => {};
-  const pendingTransfers = 2;
-  const draftMemo = 'update tests after lint';
 
   return (
     <View style={styles.container}>
