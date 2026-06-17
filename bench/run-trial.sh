@@ -57,25 +57,12 @@ if [[ -f "$BENCH_DIR/trial-pr.sh" ]]; then
   cp "$BENCH_DIR/trial-pr.sh" "$TRIAL_PR"
   chmod +x "$TRIAL_PR"
 fi
-VALIDATE_PTY=""
-if [[ "$ARM" == "inner" ]]; then
-  if [[ -f "$BENCH_DIR/chunk-validate-inner-stop.sh" ]]; then
-    VALIDATE_PTY="$RESULTS/.chunk-validate-inner-stop.sh"
-    cp "$BENCH_DIR/chunk-validate-inner-stop.sh" "$VALIDATE_PTY"
-    cp "$BENCH_DIR/chunk-validate-pty.sh" "$RESULTS/.chunk-validate-pty.sh"
-    chmod +x "$VALIDATE_PTY" "$RESULTS/.chunk-validate-pty.sh"
-  elif [[ -f "$BENCH_DIR/chunk-validate-pty.sh" ]]; then
-    VALIDATE_PTY="$RESULTS/.chunk-validate-pty.sh"
-    cp "$BENCH_DIR/chunk-validate-pty.sh" "$VALIDATE_PTY"
-    chmod +x "$VALIDATE_PTY"
-  fi
-elif [[ -f "$BENCH_DIR/chunk-validate-pty.sh" ]]; then
-  VALIDATE_PTY="$RESULTS/.chunk-validate-pty.sh"
-  cp "$BENCH_DIR/chunk-validate-pty.sh" "$VALIDATE_PTY"
-  chmod +x "$VALIDATE_PTY"
-fi
-if [[ "$ARM" == "inner" && -n "$VALIDATE_PTY" ]]; then
-  SETTINGS="$(printf '%s' "$SETTINGS" | jq --arg cmd "bash $VALIDATE_PTY" '.hooks.Stop[0].hooks[0].command = $cmd')"
+INNER_VALIDATE=""
+if [[ "$ARM" == "inner" && -f "$BENCH_DIR/inner-validate.sh" ]]; then
+  INNER_VALIDATE="$RESULTS/.inner-validate.sh"
+  cp "$BENCH_DIR/inner-validate.sh" "$INNER_VALIDATE"
+  cp "$BENCH_DIR/chunk-validate-pty.sh" "$RESULTS/.chunk-validate-pty.sh"
+  chmod +x "$INNER_VALIDATE" "$RESULTS/.chunk-validate-pty.sh"
 fi
 # shellcheck disable=SC1091
 source "$BENCH_DIR/env/shared.env"
@@ -111,29 +98,76 @@ printf '%s\n' "$SETTINGS" > "$REPO_ROOT/.claude/settings.json"
 
 ITERS=1; CI_STATUS="n/a"
 if [[ "$ARM" == "inner" ]]; then
-  # INNER: single invocation. The sidecar Stop hook validates after every turn
-  # and drives the agent to green within this one call (seconds per cycle).
-  echo "==> [$LABEL] running claude (inner, single invocation; sidecar drives validation)"
-  START=$(date +%s)
-  set +e
-  claude -p "$PROMPT" --output-format json --permission-mode acceptEdits >"$RESULT_JSON" 2>"$RUN_LOG"
-  CLAUDE_RC=$?
-  set -e
+  # INNER: harness-driven validate loop (like outer CI loop). claude -p Stop hooks
+  # do not reliably block/resume in headless mode, so the harness syncs + validates
+  # after each agent turn and resumes with failure/commit/push instructions.
+  [[ -n "$INNER_VALIDATE" ]] || { echo "ERROR: inner-validate.sh missing" >&2; exit 1; }
+  MAX_ITERS="${INNER_MAX_ITERS:-12}"
+  CLAUDE_RC=0; COST=0; TURNS=0; DUR_MS=0; IS_ERROR=false; CI_STATUS="unknown"; SID=""; FEEDBACK=""
+  START=$(date +%s); ITERS=0
+  while [ "$ITERS" -lt "$MAX_ITERS" ]; do
+    ITERS=$((ITERS + 1))
+    ij="$RESULTS/${LABEL}.iter${ITERS}.json"
+    echo "==> [$LABEL] inner iteration $ITERS (agent: edit/commit/push, then stop)"
+    set +e
+    if [ -z "$SID" ]; then
+      claude -p "$PROMPT" --output-format json --permission-mode acceptEdits >"$ij" 2>>"$RUN_LOG"
+    else
+      claude -p --resume "$SID" "$FEEDBACK" --output-format json --permission-mode acceptEdits >"$ij" 2>>"$RUN_LOG"
+    fi
+    CLAUDE_RC=$?
+    set -e
+    SID=$(jq -r '.session_id // empty' "$ij" 2>/dev/null || true)
+    COST=$(awk -v a="$COST" -v b="$(jq -r '.total_cost_usd // 0' "$ij" 2>/dev/null || echo 0)" 'BEGIN{printf "%.6f", a+b}')
+    TURNS=$((TURNS + $(jq -r '.num_turns // 0' "$ij" 2>/dev/null || echo 0)))
+    DUR_MS=$((DUR_MS + $(jq -r '.duration_ms // 0' "$ij" 2>/dev/null || echo 0)))
+    cp "$ij" "$RESULT_JSON"
+
+    VAL_LOG="$RESULTS/${LABEL}.validate${ITERS}.log"
+    echo "==> [$LABEL] sidecar validate (iteration $ITERS) ..."
+    set +e
+    bash "$INNER_VALIDATE" >"$VAL_LOG" 2>&1
+    VAL_RC=$?
+    set -e
+    if [[ $VAL_RC -ne 0 ]]; then
+      echo "==> [$LABEL] sidecar validate FAILED (rc=$VAL_RC)"
+      FEEDBACK="Sidecar validation FAILED. Fix every error below, then stop again. Do not push until validation passes on both mini-apps.
+
+$(tail -120 "$VAL_LOG")"
+      continue
+    fi
+
+    DIRTY=0
+    git diff --quiet HEAD && git diff --cached --quiet || DIRTY=1
+    AHEAD="$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0)"
+    HEAD_NOW="$(git rev-parse HEAD)"
+
+    if [[ $DIRTY -eq 1 ]]; then
+      echo "==> [$LABEL] sidecar green; uncommitted changes remain"
+      FEEDBACK="Sidecar validation passed on your working tree. Commit all changes now (git add + git commit), then stop. Do not push until committed."
+      continue
+    fi
+    if [[ "$AHEAD" -lt 1 ]]; then
+      echo "==> [$LABEL] sidecar green; no push yet"
+      FEEDBACK="Sidecar validation passed and your changes are committed. Run git push now, then stop."
+      continue
+    fi
+
+    echo "==> [$LABEL] sidecar green + pushed — waiting for CI on $BRANCH @ ${HEAD_NOW:0:8} ..."
+    CIW=$(node "$BENCH_DIR/outer-ci-wait.mjs" "$BRANCH" "$HEAD_NOW" 900 2>>"$RUN_LOG" | tail -1)
+    CI_STATUS=$(echo "$CIW" | jq -r '.status // "error"' 2>/dev/null || echo error)
+    echo "==> [$LABEL] CI iteration $ITERS -> $CI_STATUS"
+    if [ "$CI_STATUS" = "success" ]; then
+      break
+    fi
+    FEEDBACK="Your push triggered CI but the pipeline FAILED. Fix the failures, commit, and push again, then stop.
+
+$(echo "$CIW" | jq -r '.feedback // "no logs"' 2>/dev/null)"
+  done
   END=$(date +%s); WALL=$((END - START))
-  COST=$(jq -r '.total_cost_usd // 0'   "$RESULT_JSON" 2>/dev/null || echo 0)
-  TURNS=$(jq -r '.num_turns // 0'       "$RESULT_JSON" 2>/dev/null || echo 0)
-  DUR_MS=$(jq -r '.duration_ms // 0'    "$RESULT_JSON" 2>/dev/null || echo 0)
-  IS_ERROR=$(jq -r '.is_error // false' "$RESULT_JSON" 2>/dev/null || echo true)
+  [ "$CI_STATUS" = "success" ] && IS_ERROR=false || IS_ERROR=true
   HEAD_AFTER="$(git rev-parse HEAD)"
   COMMITS=$(git rev-list --count "${BASE_SHA}..${HEAD_AFTER}" 2>/dev/null || echo 0)
-  CI_STATUS="n/a"
-  if [[ "$COMMITS" -gt 0 ]]; then
-    echo "==> [$LABEL] waiting for CI on $BRANCH @ ${HEAD_AFTER:0:8} ..."
-    CIW=$(node "$BENCH_DIR/outer-ci-wait.mjs" "$BRANCH" "$HEAD_AFTER" 900 2>>"$RUN_LOG" | tail -1)
-    CI_STATUS=$(echo "$CIW" | jq -r '.status // "error"' 2>/dev/null || echo error)
-    echo "==> [$LABEL] CI -> $CI_STATUS"
-    [[ "$CI_STATUS" != "success" ]] && IS_ERROR=true
-  fi
 else
   # OUTER: harness-driven push -> WAIT for CI -> resume with failure logs -> repeat.
   # A single headless call can't faithfully wait minutes for CI, so the harness

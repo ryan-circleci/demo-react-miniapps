@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run chunk validate with a pseudo-TTY. chunk 0.7.79 deadlocks when stdout is
-# piped (CI logs, agent shells). Plain terminals are fine; use this wrapper otherwise.
+# piped (CI logs, agent shells). Also treats chunk error output as failure even
+# when the process exits 0.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -20,6 +21,7 @@ if pid == 0:
     os.execvp("chunk", ["chunk", "validate"])
 else:
     os.close(slave)
+    buf = bytearray()
     while True:
         r, _, _ = select.select([master], [], [], 1.0)
         if master in r:
@@ -29,6 +31,7 @@ else:
                 break
             if not data:
                 break
+            buf.extend(data)
             sys.stdout.buffer.write(data)
             sys.stdout.buffer.flush()
         wp, status = os.waitpid(pid, os.WNOHANG)
@@ -40,7 +43,14 @@ else:
                 data = os.read(master, 4096)
                 if not data:
                     break
+                buf.extend(data)
                 sys.stdout.buffer.write(data)
                 sys.stdout.buffer.flush()
-            sys.exit(os.waitstatus_to_exitcode(status))
+            text = buf.decode("utf-8", errors="replace")
+            code = os.waitstatus_to_exitcode(status)
+            if code != 0:
+                sys.exit(code)
+            if "✗ Error" in text or "failed with exit code" in text:
+                sys.exit(1)
+            sys.exit(0)
 PY
